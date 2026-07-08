@@ -1,6 +1,6 @@
 # AI Engineering Lab
 
-> *"Understanding systems, not just using them."*
+> *"Understanding SYSTUMMMMS, not just using them."*
 
 ## Overview
 
