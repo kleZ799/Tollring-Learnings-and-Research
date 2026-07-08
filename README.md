@@ -39,34 +39,6 @@ The objective is to understand **why they exist, how they work internally, where
 
 ---
 
-## Repository Structure
-
-```
-Research/
-│
-├── AI Fundamentals
-├── RAG
-├── GraphRAG
-├── LLMs
-├── Databases
-├── Elasticsearch
-├── PostgreSQL
-├── Vector Databases
-├── Docker
-├── Multi-Tenant Systems
-├── AI Infrastructure
-└── Architecture Studies
-
-Experiments/
-
-Projects/
-
-Architecture Diagrams/
-
-Learning Logs/
-
-References/
-```
 
 ---
 
