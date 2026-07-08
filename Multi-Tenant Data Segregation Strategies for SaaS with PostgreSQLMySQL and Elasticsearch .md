@@ -1,4 +1,4 @@
-# Multi-Tenant Data Segregation Strategies for SaaS with PostgreSQL/MySQL and Elasticsearch (v2)
+# Multi-Tenant Data Segregation Strategies for SaaS with PostgreSQL/MySQL and Elasticsearch
 
 ---
 
