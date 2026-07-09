@@ -102,4 +102,4 @@ This repository contains my personal research, notes, experiments, and interpret
 
 ---
 
-*"The best engineers aren't the ones who know the most tools. They're the ones who understand how systems work."*
+"The best engineers aren't the ones who know the most tools. They're the ones who understand how systems work."
