@@ -1,131 +1,108 @@
-# Time-Series & SQL Server – Beginner-Friendly Guide
+# Time-Series & SQL Server  
+### A Friendly, Meeting-Ready Study Guide
 
-This file is written for someone who is **new to SQL** but wants to sound confident about:
+> Goal: In 30–60 minutes of study, you should feel **confident explaining** time-series basics, how SQL Server behaves, and how that compares to TimescaleDB.
 
-- What a *time‑series* database is
-- How the **SQL Server Query Optimizer** works (at a high level)
-- How to **simulate time‑series hot/cold behavior in SQL Server**
-- How this compares to **TimescaleDB**
-- How **TimescaleDB hypertables** work
-- A **cheat sheet** of quick Q&A at the end
+We’ll keep this:
+- **Visual** – section dividers, callouts, and small tables
+- **Concrete** – tiny T‑SQL snippets
+- **Story‑driven** – metaphors you can recall quickly in a meeting
 
-I’ll use simple language, analogies, and short code examples.
+You can skim the **boxed summaries** and **cheat sheets** right before a call.
 
 ---
 
 ## 1. What is a time-series database?
 
-### 1.1 The basic idea
+### 1.1 Start with a picture
 
-**Time-series data** = data that is mainly about **“what happened at this time?”**
+Imagine a **security camera** that records every second:
+- Each frame has a **timestamp**.
+- New frames keep arriving **now, now, now…**
+- Later you might ask: “Show me **last 10 minutes**” or “Show me **last month**.”
 
-Examples:
-- Call records (call at 2026‑07‑10 09:05:12)
-- Sensor readings (temperature every second)
-- Stock prices (price every minute)
+That’s **time-series data**: 
+- Each row = **event at a point in time**.
+- We mostly **append** new rows (writes at the “right-hand side” of time).
+- We often read either **very recent** or **large historical windows**.
 
-Every row has a **timestamp** and usually we:
-- Insert new rows **in time order** (mostly “now”) 
-- Read either
-  - **Recent data** (last minutes/hours/days), or
-  - **Historical data** (months/years ago), often in bulk
+Examples you can mention:
+- Call records (`call at 2026-07-10 09:05:12`)
+- Sensor readings (temperature every 5 seconds)
+- Website traffic (page views per second)
+- Stock prices (tick data)
 
-A **time-series database (TSDB)** is a database **optimized** for this pattern.
-
-Two important ideas:
-
-1. **Hot vs Cold data**  
-2. **Chunking (splitting) data by time**
+> **Sound-bite:** “Time-series = data whose main question is *what happened **when***?”
 
 ---
 
-### 1.2 Hot vs Cold data (tiering)
+### 1.2 Hot vs Cold data – the wardrobe analogy
 
-Think of data like **clothes in a house**:
+Think of your data as **clothes**:
 
-- **Hot data**: the clothes you wear every day.  
-  → Kept in a **drawer right next to you** (fast, easy to reach).
+- **Hot data**: clothes you wear **this week**.  
+  Kept **in the front of your wardrobe** – easy to grab.
 
-- **Cold data**: winter clothes you use once a year.  
-  → Stored in a **box in the attic** (slower to reach, cheaper space).
+- **Cold data**: old festival T‑shirts and winter coats.  
+  Stored in a **box in the attic** – slower to reach, but they’re still there.
 
-For data:
-- **Hot tier** = recent data (e.g., last 7–30 days), on **fast storage** and **fast indexes**.
-- **Cold tier** = older data (months/years), maybe on **slower storage**, maybe compressed.
+In databases:
+- **Hot tier** = recent days/weeks. Lives on **fast storage**, small targeted indexes.
+- **Cold tier** = months/years back. Lives on **cheaper storage**, heavily **compressed**.
 
-A time-series database makes it easy to:
-- Keep **hot data** very fast to read/write.
-- Keep **cold data** cheaper (compressed, maybe slower) but still available.
+Why this matters:
+- Most business questions hit **recent data** → we want those queries **super fast**.
+- We still **must not lose** old data → but it’s okay if it’s a bit slower.
+
+> **Meeting phrase:** “We treat last 30 days as hot, everything older as cold. Different storage, different indexing strategy.”
 
 ---
 
-### 1.3 Chunking by time
+### 1.3 Chunking by time – boxes on a shelf
 
-Another key idea is that time-series databases **split the big table into smaller pieces** based on time.
+Storing all calls ever in **one giant table** is like putting every document you own into **one massive box**.  
+Looking for “March 2026 invoices” means digging through **everything**.
 
-Analogy: Instead of one giant **“All Calls Ever”** box, you use:
-- A box for **January 2026**
-- A box for **February 2026**
-- A box for **March 2026**
-- … and so on.
+Better: **split by time**.
 
-Each box = **one chunk** of data.
+- Box 1: January 2026
+- Box 2: February 2026
+- Box 3: March 2026
+- …
+
+Those boxes are **time chunks**.
 
 Benefits:
-- When you query **last 7 days**, the database only opens the **recent box(es)**.  
-  → Less to scan → faster.
-- When you archive or delete old data, you can **drop entire boxes** instead of deleting row-by-row.
+- Query “last 7 days”? → only open the **last 1–2 boxes**.
+- Delete/archive old data? → **drop a box** instead of tearing out sheets one by one.
 
-Time-series databases build this behavior into the **engine**.
-
----
-
-### 1.4 Two concrete examples: TimescaleDB and InfluxDB
-
-#### TimescaleDB
-
-- **Extension on top of PostgreSQL** (Postgres).  
-- It adds special objects called **hypertables** which automatically **chunk (partition) data by time and optionally by another key**.
-- You still write **SQL**, but TimescaleDB manages the time‑based chunking and many optimizations for you.
-
-#### InfluxDB
-
-- A **purpose‑built time-series database** (not a typical SQL RDBMS).
-- Uses a **line protocol** instead of classic SQL for most usage.
-- Internally optimized for **high write rates**, **downsampling**, and **retention policies** (auto-expire old data).
-
-For this guide, we focus on **SQL Server**, but knowing these two examples helps you understand what specialized TSDBs do.
+Time-series databases make this **automatic and optimized**.
 
 ---
 
-## 2. How the SQL Server Query Optimizer works (high level)
+### 1.4 TimescaleDB vs InfluxDB – names you can drop
 
-Think of the **Query Optimizer** as the **“route planner”** for SQL queries.
+#### TimescaleDB (Postgres extension)
 
-You say:  
-> “Get me from Table A and Table B, with these filters and joins.”
+- Runs **inside PostgreSQL** as an **extension**.
+- Adds **hypertables** that automatically **chunk data by time** (and optional extra key).
+- You still write **SQL**, but TimescaleDB does the **chunk/retention/compression magic**.
 
-The optimizer figures out:
-- Which **indexes** to use
-- In which **order** to join tables
-- Whether to **seek** into an index or **scan** it
-- Approximate **cost** of different paths
+> Memorize: “TimescaleDB = Postgres + time-series superpowers.”
 
-Then it picks what it thinks is the **cheapest (fastest) plan**.
+#### InfluxDB (purpose-built TSDB)
 
-We’ll cover:
-1. Parsing
-2. Execution plans
-3. Index seek vs index scan
-4. Statistics
-5. How to see the execution plan in SSMS
-6. `SET STATISTICS IO ON`
+- Designed **from day one** for time-series workloads.
+- Uses a **special line protocol** and its own query tools (though it has SQL-like layers now).
+- Focus: **very high ingest, retention policies, downsampling**.
+
+For the rest of this doc, we focus on **SQL Server** and compare to **TimescaleDB** when helpful.
 
 ---
 
-### 2.1 Parsing and binding
+## 2. SQL Server Query Optimizer – your query’s SatNav
 
-When you run a query:
+When you write a query:
 
 ```sql
 SELECT *
@@ -133,120 +110,135 @@ FROM data_calls
 WHERE callDateTime >= '2026-07-01';
 ```
 
-SQL Server does roughly:
+You’re basically saying:  
+> “SQL Server, please drive from **All Rows City** to **My Result Town**.”
 
-1. **Parsing**: checks the **syntax**.  
-   - Is the SQL valid?  
-   - Are keywords in the right order?
+The **Query Optimizer** is the **SatNav**:
+- It has a **map** (statistics).
+- It knows **roads** (indexes, joins).
+- It estimates **journey cost** (I/O, CPU).
+- It picks a **route** (execution plan).
 
-2. **Binding**: resolves names.  
-   - Does the table `data_calls` exist?  
-   - Does the column `callDateTime` exist on that table?
-
-If parsing/binding fails, you get an error.
-
-If successful, it passes the query to the **optimizer**.
+Let’s walk through how it works.
 
 ---
 
-### 2.2 Execution plans (the “route plan”)
+### 2.1 Parsing & binding – “did you speak valid SQL?”
 
-The optimizer tries multiple ways to execute the query and chooses a plan with the **lowest estimated cost**.
+Steps when you run a query:
 
-An **execution plan** is like a **flow chart** showing:
-- Which indexes/tables are read
-- What kind of operations: **Index Seek**, **Index Scan**, **Hash Join**, **Nested Loops**, etc.
-- The **order** in which operations happen
+1. **Parsing** – grammar check
+   - Is the SQL syntactically correct?
+   - Are keywords where they should be?
 
-In SSMS, there are two main views:
-- **Estimated execution plan** – what SQL Server *thinks* it will do.  
-- **Actual execution plan** – what SQL Server *actually* did, including row counts.
+2. **Binding** – reality check
+   - Does table `data_calls` exist?
+   - Is column `callDateTime` valid on that table?
 
-(We’ll see how to open them shortly.)
+If this fails, you get an error **before** any optimization.
 
 ---
 
-### 2.3 Index Seek vs Index Scan
+### 2.2 Execution plans – the route map
 
-Think of an index like a **sorted phone book**.
+An **execution plan** is a **flowchart** of how SQL Server will get your answer:
+- Which **indexes** it uses
+- Which **join types** (Nested Loops, Hash Join, etc.)
+- What order it reads things in
 
-- **Index Seek** = you know the exact last name (or range).  
-  → You jump directly to where that last name starts and read only a small part.
+You can:
+- See the **estimated** plan (before running)
+- See the **actual** plan (after running, with real row counts)
 
-- **Index Scan** = you go through the **entire phone book** from top to bottom.
+In SSMS:
+- Estimated plan: `Ctrl + L`
+- Actual plan: `Ctrl + M` then run the query
 
-In SQL terms:
+> Quick tip: In a meeting, say “We checked the **actual execution plan** and saw it was scanning the entire table.” – sounds very credible.
 
-- A **seek** is great when your `WHERE` clause **matches the index keys** well (and is selective).
-- A **scan** means SQL Server decided it’s cheaper (or necessary) to read **many or all rows** in the index/table.
+---
 
-**Example index:**
+### 2.3 Index Seek vs Index Scan – phone book story
+
+Imagine a **phone book** sorted by last name.
+
+- **Seek** = you know the last name “Patel”.  
+  You **jump directly** to P‑A‑T‑E‑L and read a few lines.
+
+- **Scan** = you don’t know much; you start at page 1 and **flip every page**.
+
+In SQL Server:
+
+- **Index Seek** (good, usually):
 
 ```sql
 CREATE INDEX IX_data_calls_callDateTime
-ON data_calls (callDateTime);
-```
+    ON data_calls (callDateTime);
 
-**Example seek query:**
-
-```sql
 SELECT callId, callerId, calleeId
 FROM data_calls
 WHERE callDateTime >= '2026-07-01'
   AND callDateTime <  '2026-08-01';
 ```
 
-If statistics know that this is a **small subset** of rows, optimizer should prefer an **Index Seek**.
+Here SQL Server can usually **seek into the time window** and read only the relevant pages.
 
-A **scan** might happen when:
-- You query a very **large range** of time (e.g., entire year), or
-- Your filter doesn’t match the index well, or
-- There is **no suitable index**.
+- **Index Scan** (sometimes fine, sometimes bad):
+  - No suitable index
+  - Very **broad time window** (e.g., year‑long range)
+  - Or the optimizer thinks a scan is cheaper than a complex seek
+
+> Sound-bite: “Seek = targeted lookup. Scan = read a lot (or all) of the index.”
 
 ---
 
-### 2.4 Statistics
+### 2.4 Statistics – the optimizer’s mental model
 
-**Statistics** are SQL Server’s **“data map”** that tell the optimizer things like:
-- How many rows are in a table
-- How values are **distributed** in a column (e.g., how many calls per date)
+The optimizer doesn’t read every row first – it relies on **statistics**:
 
-If statistics are **out of date or missing**, the optimizer may make **bad guesses**, leading to:
-- Wrong join types
-- Bad index choices
-- Over/under estimation of rows
+- How many rows are in the table?
+- Roughly how many rows have a given date range?
+- How are values distributed?
 
-That’s why automatic or manual **statistics updates** are important for performance.
+If statistics are **out of date**:
+- The optimizer may expect **10 rows** but actually get **10 million**.
+- It might pick a plan that works great for 10 rows but dies on 10M.
 
-To update statistics manually:
+Updating stats manually:
 
 ```sql
--- For a single table
+-- Update statistics for one table
 UPDATE STATISTICS data_calls;
-
--- Or rebuild all statistics and indexes via maintenance routines (not shown here).
 ```
 
----
+Most systems rely on **auto-update**, but for big time-series loads, you might also schedule explicit updates.
 
-### 2.5 How to view an execution plan in SSMS
-
-In **SQL Server Management Studio (SSMS)**:
-
-1. Write your query.
-2. For **estimated plan**: click the **Display Estimated Execution Plan** button (or press `Ctrl + L`).
-3. For **actual plan**: click **Include Actual Execution Plan** (or press `Ctrl + M`) and then run the query.
-4. A new **Execution Plan** tab will appear showing the graphical plan.
-
-Hover over the operators (Index Seek, Index Scan, etc.) to see extra details.
+> Meeting phrase: “We rely heavily on **good statistics** so the optimizer can choose index seeks and the right join strategy.”
 
 ---
 
-### 2.6 `SET STATISTICS IO ON`
+### 2.5 Seeing the plan in SSMS
 
-`SET STATISTICS IO ON` tells SQL Server to show how many **logical reads** (pages read) your query used.
+**Estimated plan (no execution)**:
+1. Write query.
+2. Click **Display Estimated Execution Plan** or press `Ctrl + L`.
 
-Example:
+**Actual plan (with execution)**:
+1. Click **Include Actual Execution Plan** or press `Ctrl + M`.
+2. Run the query.
+3. Check the **Execution Plan** tab.
+
+Hover over icons like **Index Seek** or **Index Scan** to see:
+- Estimated vs actual row counts
+- Which index was used
+
+This is often **Step 1** in understanding performance.
+
+---
+
+### 2.6 `SET STATISTICS IO ON` – how many pages did we read?
+
+`SET STATISTICS IO ON` is like a **fuel gauge** for logical I/O.
 
 ```sql
 SET STATISTICS IO ON;
@@ -259,44 +251,51 @@ WHERE callDateTime >= '2026-07-01'
 SET STATISTICS IO OFF;
 ```
 
-In the **Messages** tab you’ll see something like:
+In the **Messages** tab, you’ll see something like:
 
 ```text
 Table 'data_calls'. Scan count 1, logical reads 123, physical reads 0, ...
 ```
 
-You can compare two versions of a query by looking at **logical reads**:
-- Fewer logical reads → usually better.
+Compare queries by their **logical reads**:
+- Lower logical reads usually = more efficient plan.
+
+> Sound-bite: “We changed the index and dropped logical reads from ~10k to ~300, so the new plan is clearly better.”
 
 ---
 
-## 3. Simulating time-series hot/cold behavior in SQL Server
+## 3. Making SQL Server behave like a time-series DB
 
-SQL Server is not a time-series database, but we can **simulate** time‑series behaviors using:
+Now the fun part: **turn SQL Server into a time-series‑ish engine** using:
 
 1. **Table partitioning** (by time)
-2. **Filegroups** (different storage for hot vs cold)
-3. **Filtered indexes** (fast index on recent data)
-4. **Columnstore indexes** (for cold/archive data)
-5. A **worked example** with a `data_calls` table
+2. **Filegroups** (hot vs cold storage)
+3. **Filtered indexes** (fast “last 30 days” access)
+4. **Columnstore** (compressed archive)
+5. A **worked `data_calls` example** with a stored procedure
+
+> Mental model: We’re building our own “home‑made TimescaleDB” inside SQL Server.
 
 ---
 
-### 3.1 Table Partitioning (partition function + partition scheme)
+### 3.1 Table Partitioning – shelves in the same bookcase
 
-**Table partitioning** = splitting one logical table into **multiple physical chunks** (partitions) **inside SQL Server**, often by **date**.
+**Table partitioning** = one logical table split into multiple **physical partitions**, usually by **date**.
 
-Analogy: One big bookshelf (table) with **shelves by month** (partitions).
+Analogy:
+- One big **bookcase** (table)
+- Many **shelves** inside (partitions)
+- Still looks like **one bookcase** to the user
 
-Two key objects:
-- **Partition Function**: defines **how to break up the data** (e.g., by month boundary dates).
-- **Partition Scheme**: maps each partition to a **filegroup** (where data is stored physically).
+Two key pieces:
+- **Partition function** – defines **date boundaries** (e.g., per month).
+- **Partition scheme** – maps each partition to a **filegroup**.
 
 #### 3.1.1 Example: monthly partitions by `callDateTime`
 
-> Note: This is simplified; in real life you’d plan partition boundaries more carefully.
+> Simplified for understanding – real designs will be more robust.
 
-**Step 1: Create filegroups** (we’ll use them for hot vs cold later):
+**Step 1: Create hot and cold filegroups**
 
 ```sql
 ALTER DATABASE YourDbName
@@ -306,7 +305,7 @@ ALTER DATABASE YourDbName
 ADD FILEGROUP FG_COLD;
 ```
 
-Add data files to these filegroups (simplified example):
+Add physical files (paths are examples):
 
 ```sql
 ALTER DATABASE YourDbName
@@ -324,14 +323,11 @@ ADD FILE (
 ) TO FILEGROUP FG_COLD;
 ```
 
-**Step 2: Create a partition function by month**
-
-Suppose we want partitions by month boundaries for 2026:
+**Step 2: Partition function by month**
 
 ```sql
 CREATE PARTITION FUNCTION PF_CallsByMonth (DATETIME2)
 AS RANGE RIGHT FOR VALUES (
-    -- Each value is an upper boundary for a partition
     '2026-01-01',
     '2026-02-01',
     '2026-03-01',
@@ -348,20 +344,16 @@ AS RANGE RIGHT FOR VALUES (
 );
 ```
 
-`RANGE RIGHT` means each boundary value belongs to the **right-hand** partition. SQL Server will create **N+1** partitions for N values.
+`RANGE RIGHT` = each boundary belongs to the **right** partition.
 
-**Step 3: Create a partition scheme mapping to hot/cold filegroups**
-
-Let’s say:
-- **Most recent months** (e.g., November, December) go to **FG_HOT**
-- Older months go to **FG_COLD**
+**Step 3: Partition scheme mapping months → filegroups**
 
 ```sql
 CREATE PARTITION SCHEME PS_CallsByMonth
 AS PARTITION PF_CallsByMonth
 TO (
-    FG_COLD, -- <= 2026-01-01
-    FG_COLD, -- 2026-01-01 to < 2026-02-01
+    FG_COLD, -- up to 2026-01-01
+    FG_COLD, -- Jan
     FG_COLD, -- Feb
     FG_COLD, -- Mar
     FG_COLD, -- Apr
@@ -376,36 +368,34 @@ TO (
 );
 ```
 
-Now we have:  
-- A **partition function** splitting time into months.
-- A **partition scheme** mapping those months to **hot/cold filegroups**.
+Now:
+- Older months → **FG_COLD**
+- Recent months → **FG_HOT**
+
+> Visual: imagine the early shelves of the bookcase are on a cheaper rack, and the latest shelves on a fancy SSD rack.
 
 ---
 
-### 3.2 Filegroups for separating hot vs cold storage
+### 3.2 Filegroups – wiring in actual storage
 
-We already saw filegroups above. Conceptually:
+We already used filegroups above; conceptually:
 
-- **FG_HOT** → on **fast SSD**, smaller but quick.  
-- **FG_COLD** → on **slower/cheaper disk**, larger and maybe compressed.
+- **FG_HOT** → put on **fast SSD**
+- **FG_COLD** → put on **cheaper, slower disk**
 
-Partitioning + filegroups lets you:
-- Put **recent data** on FG_HOT.
-- Put **old data** on FG_COLD.
+You can then:
+- **Compress** the cold filegroup more aggressively
+- Manage backups/restores per filegroup
 
-You can also:
-- **Compress** cold partitions more aggressively.
-- Potentially **backup** or **restore** filegroups separately.
+This is how you get a **physical** hot/cold split, not just a logical one.
 
 ---
 
-### 3.3 Filtered indexes for a “last 30 days” fast index
+### 3.3 Filtered indexes – turbo for “last 30 days”
 
-A **filtered index** is an index that only includes rows that match a condition.
+A **filtered index** is an index with a `WHERE` clause.
 
-For time-series, a classic pattern is an index on just the **last X days** of data.
-
-Example: Index on calls from the last 30 days only.
+Use case: Make a **tiny, super‑fast index** only on **recent rows**.
 
 ```sql
 CREATE INDEX IX_data_calls_Last30Days
@@ -413,13 +403,11 @@ ON data_calls (callDateTime, callerId, calleeId)
 WHERE callDateTime >= DATEADD(DAY, -30, SYSUTCDATETIME());
 ```
 
-This index will:
-- Only include rows with `callDateTime` in the last 30 days (from the time of index creation).  
-- Be **smaller** and **faster** to scan/seek for recent queries.
+This index:
+- Contains **only rows from the last 30 days**
+- Is therefore **smaller** and faster for queries limited to recent data
 
-In production, you might manage this with a job that **recreates or refreshes** the filtered index periodically to keep the condition correct.
-
-Example query that can use this filtered index:
+Example query that can use it:
 
 ```sql
 SELECT callId, callerId, calleeId
@@ -427,42 +415,42 @@ FROM data_calls
 WHERE callDateTime >= DATEADD(DAY, -7, SYSUTCDATETIME());
 ```
 
-Since the query subset (last 7 days) is inside the filtered range (last 30 days), optimizer can use `IX_data_calls_Last30Days`.
+In practice, you might:
+- Rebuild this index periodically (e.g., nightly) so the 30‑day window stays current.
+
+> Meeting phrase: “We use a **filtered index** to keep last 30 days blazing fast without bloating the index with old rows.”
 
 ---
 
-### 3.4 Columnstore indexes for archived/cold data
+### 3.4 Columnstore indexes – vacuum‑packed history
 
-**Columnstore indexes** store data by **column** instead of by row.
+**Columnstore indexes**:
+- Store data **column by column** (not row by row)
+- Compress fantastically
+- Shine for **analytics** (SUM/COUNT/AVG across big ranges)
 
-Analogy: Instead of filing each call as a full row (`callId, datetime, callerId, ...` together), you store **all callIds together**, all datetimes together, etc.
+Analogy:
+- Rowstore = each meal in its own box.
+- Columnstore = all the rice together, all the curry together – easier to sum up “how much rice total?”
 
-Benefits for **analytics / reporting**:
-- Great **compression** (good for cold data)
-- Very fast for **aggregations** like `COUNT`, `SUM`, `AVG` over large ranges
+For cold/historical data, columnstore is like **vacuum‑packing** your archive.
 
-In time-series setups we often:
-- Use **rowstore (normal) indexes** for **hot, transactional** operations (OLTP).
-- Use **columnstore** for **cold, historical** data (OLAP/reporting).
-
-Example: add a **nonclustered columnstore index** to compress & speed analysis of older calls.
+Example:
 
 ```sql
 CREATE NONCLUSTERED COLUMNSTORE INDEX CCI_data_calls_archive
 ON data_calls (callDateTime, callerId, calleeId, callOutcome);
 ```
 
-You might create this index primarily over **cold partitions** (or on a separate archival table) to avoid overhead on hot data.
+You would:
+- Prefer this for **cold partitions** or a dedicated archive table
+- Keep **rowstore indexes** lean on the hot data for OLTP writes
 
 ---
 
-### 3.5 Worked example – `data_calls` table with hot/cold split
+### 3.5 Worked example – `data_calls` with a hot/cold‑aware stored procedure
 
-Now we bring it all together.
-
-#### 3.5.1 Table definition
-
-We’ll create `data_calls` using our partition scheme.
+#### 3.5.1 Table definition on partition scheme
 
 ```sql
 CREATE TABLE data_calls
@@ -477,35 +465,21 @@ CREATE TABLE data_calls
 ON PS_CallsByMonth (callDateTime);
 ```
 
-Key points:
-- `callDateTime` is part of the **clustered primary key** so that **partitioning** is based on time.
-- The table is spread across partitions defined in `PS_CallsByMonth`.
-
-You can still add additional **nonclustered indexes** for typical queries.
+Key ideas:
+- `callDateTime` is **part of the clustered key**
+- That ties the table directly to the **time partitioning**
 
 ---
 
-#### 3.5.2 Conceptual hot vs cold boundary (last 30 days)
+#### 3.5.2 Defining the hot/cold boundary
 
-We choose a **logical** hot/cold boundary:
-- **Hot** = calls in the last 30 days
-- **Cold** = older than 30 days
+We’ll define:
+- **Hot** = last 30 days from **now** (`SYSUTCDATETIME()`)
+- **Cold** = anything older than that
 
-Some partitions might be mostly hot, some mostly cold—it depends on date boundaries and our partition function.
+We then split any input date range into **cold part** and **hot part**.
 
-We’ll write a stored procedure that:
-- Accepts a **date range**: `@StartDate`, `@EndDate`.
-- Splits it into:
-  - A **hot part** (if any) = intersection with last 30 days.
-  - A **cold part** (if any) = everything before that.
-- Queries **hot** data and **cold** data separately.
-- Combines results with `UNION ALL`.
-
-This mimics what a TSDB might do behind the scenes.
-
----
-
-#### 3.5.3 Stored procedure: query hot and cold parts separately
+#### 3.5.3 Stored procedure: split & query
 
 ```sql
 CREATE OR ALTER PROCEDURE usp_GetCalls_ByDateRange
@@ -517,19 +491,14 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    -- Define hot boundary: last 30 days from now (UTC in this example)
+    -- Hot boundary: last 30 days (UTC)
     DECLARE @HotBoundary DATETIME2(3) = DATEADD(DAY, -30, SYSUTCDATETIME());
 
-    -- Normalize: ensure EndDate > StartDate
     IF @EndDate <= @StartDate
     BEGIN
         RAISERROR('EndDate must be greater than StartDate', 16, 1);
         RETURN;
     END;
-
-    -- We will build two queries:
-    -- 1) Cold part: [@StartDate, MIN(@EndDate, @HotBoundary))
-    -- 2) Hot part:  [MAX(@StartDate, @HotBoundary), @EndDate)
 
     ;WITH ColdRange AS
     (
@@ -550,7 +519,7 @@ BEGIN
             EndDate   = @EndDate
     )
 
-    -- We will UNION ALL two queries, but only when ranges are valid
+    -- Query 1: cold slice
     SELECT
         c.callId,
         c.callDateTime,
@@ -562,10 +531,11 @@ BEGIN
     JOIN data_calls c
         ON c.callDateTime >= r.StartDate
        AND c.callDateTime <  r.EndDate
-    WHERE r.StartDate < r.EndDate   -- only if cold range is non-empty
+    WHERE r.StartDate < r.EndDate
 
     UNION ALL
 
+    -- Query 2: hot slice
     SELECT
         h.callId,
         h.callDateTime,
@@ -577,19 +547,12 @@ BEGIN
     JOIN data_calls h
         ON h.callDateTime >= r.StartDate
        AND h.callDateTime <  r.EndDate
-    WHERE r.StartDate < r.EndDate;  -- only if hot range is non-empty
+    WHERE r.StartDate < r.EndDate;
 END;
 GO
 ```
 
-Notes:
-- We use `@HotBoundary` as the **moving 30‑day boundary**.
-- The procedure cleanly separates query ranges into **COLD** and **HOT** windows.
-- In practice, you might:
-  - Add **query hints** or **filtered indexes** tuned separately for hot vs cold.
-  - Even query a **different table** for archived data (e.g., `data_calls_archive`).
-
-**Example usage:**
+Usage:
 
 ```sql
 EXEC usp_GetCalls_ByDateRange
@@ -597,68 +560,63 @@ EXEC usp_GetCalls_ByDateRange
     @EndDate   = '2026-07-15';
 ```
 
-This might:
-- Treat part of June as **COLD**.
-- The last 30 days of the window as **HOT**.
+What this gives you:
+- A query that **naturally splits** data into **cold** and **hot** segments.
+- A hook to tune each side differently (indexes, hints, even separate tables in a more advanced architecture).
+
+> Meeting phrase: “Our stored proc splits the requested window at a **30‑day hot boundary**, so recent calls hit fast hot storage and older calls hit the colder, more compressed partitions.”
 
 ---
 
-## 4. Comparison – SQL Server native vs TimescaleDB
+## 4. SQL Server partitioning vs TimescaleDB – comparison table
 
-### 4.1 High-level comparison table
+> Use this section directly in slides or discussion.
+
+### 4.1 Side-by-side view
 
 | Aspect | SQL Server Native (Partitioning + Indexes) | TimescaleDB (on PostgreSQL) |
 |--------|---------------------------------------------|------------------------------|
-| Core idea | Use **partitioned tables**, **filegroups**, **filtered and columnstore indexes** to simulate time-series behavior. | Use **hypertables** that automatically **chunk data by time** (and optional space key). |
-| Data model | Regular **relational tables** with T‑SQL. | **Postgres tables** extended by TimescaleDB; still **SQL** but with some extra functions. |
-| Time-based chunking | Must be **designed & maintained manually** (partition function/scheme, sliding window, etc.). | **Automatic**: hypertables chunk data based on time interval and rules. |
-| Hot vs cold tiers | Achieved via **filegroups**, partition placement, filtered indexes, and/or separate tables. | Achieved via **chunk policies**, compression, retention policies; simpler APIs for tiering. |
-| Compression for history | Use **page/row compression** or **columnstore indexes** on cold partitions. | Built‑in **compression** per chunk; policies to compress old chunks automatically. |
-| Management overhead | Higher: need **DBA scripts** for adding/removing partitions, moving data, managing indexes. | Lower for time-series: many patterns (**retention, compression, downsampling**) are built in. |
-| Ecosystem | Very mature **enterprise tooling**, SSMS, SQL Agent, etc. Many admins already know it. | Postgres ecosystem + Timescale-specific tools; useful if you are already a Postgres shop. |
-| Learning curve | For time-series patterns, requires understanding **partitioning, filegroups, indexes, maintenance**. | Need to learn **Postgres** plus **Timescale concepts** (hypertables, chunks, policies). |
-| Effort to adopt | **Low–medium** if you already use SQL Server and data volume is moderate; **high** if you need complex partitioning. | **Medium–high** because it’s a different database stack; migration effort, new tooling, etc. |
-| When it shines | When you must stay on **SQL Server** (licensing, existing apps) and have control over schema + maintenance jobs. | When you need a **dedicated, scalable time-series engine** and you’re okay adopting Postgres. |
+| Core idea | Manually design **time-based partitions**, filegroups, filtered & columnstore indexes. | Use **hypertables** that auto‑chunk data by time (and optionally space key). |
+| Data model | Classic relational tables, **T‑SQL**. | Postgres tables with extra Timescale features, **SQL** queries. |
+| Time chunking | You define a **partition function** and keep adding/removing boundaries. | Time chunking is **built-in** and mostly automatic once configured. |
+| Hot vs cold | Via **filegroups + indexes**; more manual scripts & DBA effort. | Via **policies** (compression, retention, tiering) per chunk. |
+| Compression | Page/row compression & **columnstore** (especially for cold partitions). | Chunk-level **compression** built in; easy to apply policy-wise. |
+| Tooling & ecosystem | Very strong enterprise ecosystem; many teams already on SQL Server. | Postgres ecosystem + Timescale tools; good if you already like Postgres. |
+| Learning curve | Need to understand **partitioning, filegroups, maintenance jobs**. | Need to learn **Postgres + Timescale concepts** (hypertables, chunks, policies). |
+| Effort to adopt | Lower if you’re already on SQL Server; no new infra. | Higher – new database stack, migration work, new ops. |
+| Strengths | Fits well where **SQL Server is the standard** and TS needs are moderate to high. | Great when time-series is **core**, volume is huge, and Postgres is acceptable. |
+| Weak spots | Time-series patterns feel more **manual**, especially sliding windows. | Requires organizational buy-in for a **new DB platform**. |
+
+### 4.2 Approximate effort levels
+
+| Approach | Initial design | Ongoing maintenance | Summary line you can say |
+|----------|----------------|---------------------|--------------------------|
+| SQL Server native | ~2–6 weeks to get a good partitioning/indexing model. | Medium – adjust partitions, manage sliding window, stats, index maintenance. | “We can get 80–90% of TS behavior using SQL Server features we already own.” |
+| TimescaleDB | ~4–12 weeks including PoC, pipeline changes, infra. | Medium – mostly policies & monitoring rather than hand‑written scripts. | “More turnkey for time-series, but it comes with the cost of a new stack.” |
 
 ---
 
-### 4.2 Rough effort estimates (very approximate)
+## 5. How TimescaleDB hypertables & chunking work (simple mental model)
 
-Assume you already know basic SQL but are new to time-series thinking.
+> Remember: TimescaleDB is a **Postgres extension**, not a separate engine written from scratch.
 
-| Approach | Initial design effort | Ongoing maintenance | Comments |
-|----------|----------------------|---------------------|----------|
-| **SQL Server native** | 2–6 weeks (depending on complexity and team experience) to design partitions, indexes, jobs. | Medium: adjust partitions, update stats, monitor performance, maybe sliding window scripts. | Best when you’re **locked into SQL Server** and want to avoid new tech stacks. |
-| **TimescaleDB on Postgres** | 4–12 weeks including PoC, schema mapping, pipelines, and infra setup. | Medium: mostly policy tweaks and monitoring; TS patterns are **first‑class**. | Good when you expect **very large time-series volume** and can justify a new stack. |
+### 5.1 Hypertables and chunks explained
 
-These are not strict numbers—just a way to talk about **relative** effort in a meeting.
-
----
-
-## 5. How TimescaleDB implements hypertable chunking (simple view)
-
-TimescaleDB is a **PostgreSQL extension**. That means:
-- It runs **inside Postgres**.
-- It uses Postgres’ **storage, WAL, replication, etc.**
-- It adds extra features (time-series, compression, policies).
-
-### 5.1 Hypertables and chunks
-
-Core concepts:
-
-- **Hypertable**: a **logical table** that behaves like a normal Postgres table to you, but is actually split into many **chunks** under the hood.
-- **Chunk**: a **physical child table** that stores a subset of the data for a specific **time interval** (and optional second dimension, like device ID).
+- **Hypertable**: the **logical big table** you query.
+- **Chunks**: lots of **child tables** created by TimescaleDB that each store data for a specific **time range** (and optional second dimension, like `device_id`).
 
 Analogy:
-- Hypertable = **virtual big table** “all calls”.
-- Chunk = one **physical box** of calls for a given time range (e.g., “January 2026 calls”).
+- Hypertable = “**All Calls Ever**” spreadsheet.
+- Chunk = actual tabs within that spreadsheet: “Jan 2026”, “Feb 2026”, etc.
 
-### 5.2 Simple creation example (Postgres + TimescaleDB)
+You send queries to the **hypertable**. TimescaleDB:
+- Figures out **which chunks** hold the relevant time slices.
+- Only touches those chunks.
 
-(Syntax is Postgres/Timescale, not SQL Server.)
+### 5.2 Example (Postgres/Timescale syntax)
 
 ```sql
--- Create a regular Postgres table first
+-- Step 1: Regular Postgres table
 CREATE TABLE data_calls (
     callId       BIGINT       NOT NULL,
     callDateTime TIMESTAMPTZ  NOT NULL,
@@ -667,73 +625,71 @@ CREATE TABLE data_calls (
     callOutcome  TEXT         NOT NULL
 );
 
--- Turn it into a hypertable
+-- Step 2: Convert it to a hypertable
 SELECT create_hypertable('data_calls', 'callDateTime');
 ```
 
 After `create_hypertable`:
-- TimescaleDB sets up **metadata** and underlying **chunk tables**.
-- New inserts into `data_calls` get automatically routed into the correct **chunk** based on `callDateTime`.
+- Inserts are automatically routed into the **right time chunk**.
+- New chunks are created as time progresses.
 
-### 5.3 Chunking behavior
+### 5.3 Policies – the built‑in “DBA scripts”
 
-- TimescaleDB decides **chunk sizes** (e.g., one week or one month) based on configuration.
-- When data crosses a time boundary, it stores rows in the **next chunk**.
-- Background jobs can:
-  - **Compress older chunks**
-  - Apply **retention policies** (drop very old chunks)
-  - Do **continuous aggregates** (materialized rollups)
+TimescaleDB adds helper features like:
+- **Compression policies** – compress chunks older than X days.
+- **Retention policies** – drop chunks older than Y months.
+- **Continuous aggregates** – pre‑compute rollups (e.g., hourly summaries).
 
-As a developer, you mostly just:
-- Define a **hypertable**.
-- Insert data with **timestamps**.
-- Use **normal SQL** queries.
+So instead of custom T‑SQL scripts, you attach **policies** to the hypertable.
 
-If you explore the open-source code, keywords to look for:
-- `hypertable`
-- `chunk`
-- `create_hypertable`
-- `partitioning` / `time_bucket`
+> If you read the code: look for things like `hypertable`, `chunk`, `create_hypertable`, and `time_bucket` – those are core.
 
 ---
 
-## 6. Quick answers cheat sheet (for meetings)
+## 6. Quick answers cheat sheet (10 Q&A)
 
-Ten short Q&A pairs you can review just before a meeting.
+Use this section as your **last 5‑minute review** before a meeting.
 
 1. **Q:** What is time-series data?  
-   **A:** Data where each row is tied to a **timestamp**, usually written mostly in time order (e.g., sensor readings, call logs).
+   **A:** Data where each row describes **something at a timestamp** (e.g., a call, sensor reading), usually written in time order.
 
-2. **Q:** What’s the idea of hot vs cold data?  
-   **A:** **Hot** = recent, frequently accessed, kept on **fast storage**; **cold** = older, rarely used, kept cheaper and often **compressed**.
+2. **Q:** What’s hot vs cold data?  
+   **A:** **Hot** = recent, frequently accessed, kept on **fast storage** with focused indexes. **Cold** = older, rarely touched, stored **cheaper and compressed**.
 
-3. **Q:** How do time-series databases handle data internally?  
-   **A:** They **chunk data by time** (e.g., one chunk per day or month) and apply different policies (compression, retention) per chunk.
+3. **Q:** How do time-series databases store data?  
+   **A:** They **chunk data by time** (days/weeks/months), often with **automatic** chunk management, compression, and retention.
 
-4. **Q:** How can SQL Server mimic time-series behavior?  
-   **A:** Using **table partitioning** by time, **filegroups** for hot/cold, **filtered indexes** for recent data, and **columnstore indexes** for historical data.
+4. **Q:** How can SQL Server mimic a time-series DB?  
+   **A:** Use **table partitioning by time**, **filegroups** for hot/cold, **filtered indexes** for “last 30 days”, and **columnstore** for older history.
 
 5. **Q:** What does the SQL Server Query Optimizer do?  
-   **A:** It’s a **route planner** that decides how to execute a query: which indexes to use, join order, and whether to seek or scan.
+   **A:** It’s a **route planner**: given a query, it chooses the cheapest execution plan (indexes, joins, seeks vs scans) based on statistics.
 
-6. **Q:** What’s the difference between an index seek and an index scan?  
-   **A:** **Seek** = jump straight to the matching rows (like searching by last name in a phone book). **Scan** = read most or all rows in the index/table.
+6. **Q:** Index seek vs index scan in one sentence?  
+   **A:** **Seek** = jump straight to the rows you need; **scan** = read most or all rows; we prefer seeks for selective queries.
 
-7. **Q:** Why do statistics matter in SQL Server?  
-   **A:** They tell the optimizer **how data is distributed**. Good statistics → better plans; bad/out-of-date statistics → poor performance choices.
+7. **Q:** Why are statistics important?  
+   **A:** They tell the optimizer **how many rows** match your filters; good stats → good plan choices; bad stats → slow queries.
 
-8. **Q:** How do I see what plan SQL Server used for a query?  
-   **A:** In SSMS, use **Include Actual Execution Plan** (`Ctrl+M`) and run the query. You can also use `SET STATISTICS IO ON` to see logical reads.
+8. **Q:** How do I inspect performance of a query in SSMS?  
+   **A:** Turn on **Include Actual Execution Plan** (`Ctrl+M`) and optionally `SET STATISTICS IO ON` to see logical reads.
 
-9. **Q:** When would I consider TimescaleDB instead of SQL Server partitioning?  
-   **A:** When time-series is a **core workload**, data volume is very large, and you’re okay adopting **Postgres** for easier, built‑in TS features.
+9. **Q:** When would I consider TimescaleDB?  
+   **A:** When time-series is a **primary workload**, volumes are **very large**, and adopting **Postgres** is acceptable—it gives you time-series features out of the box.
 
-10. **Q:** What is a hypertable in TimescaleDB?  
-    **A:** A **logical table** that automatically splits into many **time-based chunks** under the hood; you query it like a normal Postgres table.
+10. **Q:** What is a hypertable?  
+    **A:** A TimescaleDB **logical table** that automatically splits data into many **time-based chunks**; you query it like a normal Postgres table.
 
 ---
 
-**Summary:**  
-- Time-series thinking mainly adds **time‑based chunking** and **hot/cold tiering** on top of normal relational ideas.  
-- SQL Server can get close using **partitioning, filegroups, and smart indexes**.  
-- TimescaleDB offers those behaviors as **first‑class features** via hypertables and chunks.
+### Final 1‑minute recap
+
+If you remember only this:
+
+- **Time-series** = “what happened **when**,” usually append‑only, read recent or big ranges.
+- **Hot vs cold** = wardrobe: daily clothes in front, winter coats in the attic.
+- **SQL Server** can behave time-series-ish using **partitioning, filegroups, filtered indexes, and columnstore**.
+- **Query Optimizer** = SatNav choosing between index **seeks** and **scans** based on **statistics**.
+- **TimescaleDB hypertables** = Postgres tables that auto‑chunk by time, with built‑in policies for compression and retention.
+
+You’ll sound informed and intentional in any high-level discussion on this topic.
